@@ -2,6 +2,39 @@
 
 A benchmark for evaluating how efficiently LLMs and agent systems can **discover hidden requirements** through iterative feedback.
 
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           DCP-Bench Flow                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌─────────┐      ┌─────────────┐      ┌───────────┐      ┌─────────────┐ │
+│   │  Agent  │─────▶│  solution.py │─────▶│  Runner   │─────▶│  Evaluator  │ │
+│   └─────────┘      └─────────────┘      └───────────┘      └─────────────┘ │
+│        ▲                                      │                    │        │
+│        │                                      │                    │        │
+│        │           ┌─────────────┐            │                    ▼        │
+│        └───────────│feedback.json│◀───────────┘           ┌─────────────┐  │
+│                    └─────────────┘                        │ Test Cases  │  │
+│                          │                                │  (hidden)   │  │
+│                          ▼                                └─────────────┘  │
+│                    ┌─────────────┐                                          │
+│                    │  Violations │                                          │
+│                    │  + Coverage │                                          │
+│                    └─────────────┘                                          │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Phase 0          Phase 1          Phase 2          ...         Phase N    │
+│  ┌──────┐         ┌──────┐         ┌──────┐                     ┌──────┐   │
+│  │ Rule │         │ Rule │         │ Rule │                     │ Rule │   │
+│  │  A   │    +    │  A   │    +    │  A   │    +    ...    +    │  A   │   │
+│  └──────┘         │  B   │         │  B   │                     │  B   │   │
+│                   └──────┘         │  C   │                     │ ...  │   │
+│                                    └──────┘                     │  Z   │   │
+│                                                                 └──────┘   │
+│  ◀──────────────── Rules accumulate across phases ─────────────────────▶   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
 ## Core Concept
 
 The agent receives only minimal initial information (input/output types, basic problem description). The actual correctness constraints are **not fully disclosed** — the agent must infer them from structured feedback on failed attempts.
