@@ -3,12 +3,17 @@
 
 ## 1. Goal
 
-DCP-Bench evaluates how efficiently an LLM or agent system can produce correct code when:
+DCP-Bench evaluates how efficiently an LLM or agent system can **discover hidden requirements** through iterative feedback.
 
-- the problem specification is revealed over multiple phases,
-- correctness constraints grow stricter over phases,
-- after each submitted attempt the agent receives structured feedback,
-- the agent must use that feedback to converge to a valid solution.
+**Core challenge:** The agent receives only minimal initial information (input/output types, basic problem class). The actual correctness constraints are **not fully disclosed** — the agent must infer them from structured feedback on failed attempts.
+
+Key properties:
+
+- The agent starts with incomplete specification (only essential input/output contract)
+- Hidden constraints are revealed indirectly through violation feedback
+- Each phase introduces new undisclosed requirements
+- The agent must form hypotheses about hidden rules and refine them based on feedback
+- Success requires systematic exploration, not just code generation
 
 ---
 
@@ -29,6 +34,8 @@ A **phase** is a stage of a task with a fixed set of rules. Rules only grow stri
 ValidSolutions₀ ⊇ ValidSolutions₁ ⊇ ... ⊇ ValidSolutionsₙ
 ```
 
+**Important:** All phases within a task constitute a single continuous run. The agent must maintain state and context across all phases to progressively refine its solution.
+
 ### 2.3 Rule
 
 A **rule** is a named correctness constraint (e.g., "no_input_mutation", "deterministic_output").
@@ -45,7 +52,40 @@ A **scope** is a category label for where a rule violation occurred (e.g., "nest
 
 ---
 
-## 3. Task Structure
+## 3. Task Difficulty Levels
+
+Tasks are organized into difficulty levels. Difficulty is determined by multiple factors, not just the number of phases.
+
+### 3.1 Difficulty Factors
+
+| Factor | Description |
+|--------|-------------|
+| **Number of phases** | More phases = more incremental constraints to satisfy |
+| **Phase complexity** | How much each phase adds (simple rule vs complex behavioral constraint) |
+| **Hidden states** | Number of edge cases and implicit requirements not obvious from description |
+| **Data structure complexity** | Flat vs nested vs recursive vs graph-like structures |
+| **Algorithmic depth** | Simple iteration vs dynamic programming vs graph algorithms |
+| **Constraint interactions** | How rules interact and conflict with each other |
+
+### 3.2 Difficulty Tiers
+
+| Tier | Phases | Description |
+|------|--------|-------------|
+| **Easy** | 3–5 | Basic data transformations, simple rules, minimal hidden states |
+| **Medium** | 6–15 | Moderate algorithmic complexity, multiple interacting rules |
+| **Hard** | 16–30 | Complex algorithms, many edge cases, subtle constraint interactions |
+| **Expert** | 31–50 | Deep algorithmic challenges, extensive hidden states, complex structures |
+
+### 3.3 Requirements
+
+- **Minimum phases per task:** 3
+- **Maximum phases per task:** 50
+- Difficulty must increase gradually within a tier
+- Tasks should cover diverse problem domains (strings, graphs, trees, optimization, etc.)
+
+---
+
+## 4. Task Structure
 
 ```
 tasks/
@@ -56,7 +96,7 @@ tasks/
     └── tests.py         # test cases (not agent-visible)
 ```
 
-### 3.1 task.yaml
+### 4.1 task.yaml
 
 Complete task definition including phases and rules.
 
@@ -64,6 +104,7 @@ Complete task definition including phases and rules.
 id: "task_01_normalize_dict"
 name: "Normalize Dictionary"
 description: "Transform nested dictionaries according to rules"
+difficulty: "easy"  # easy | medium | hard | expert
 
 interface:
   function_name: "normalize"
@@ -102,7 +143,7 @@ limits:
   max_total_attempts: 50
 ```
 
-### 3.2 problem.md (agent-visible)
+### 4.2 problem.md (agent-visible)
 
 ```markdown
 # Normalize Dictionary
@@ -121,7 +162,7 @@ Implement a function that normalizes a nested dictionary...
 - Do not modify the input
 ```
 
-### 3.3 evaluator.py
+### 4.3 evaluator.py
 
 ```python
 from typing import Any
@@ -152,7 +193,7 @@ class Evaluator(BaseEvaluator):
         return RuleResult.failed(scope="dict_ordering")
 ```
 
-### 3.4 tests.py
+### 4.4 tests.py
 
 ```python
 from dcp_bench.testing import TestCase
@@ -182,7 +223,7 @@ TEST_CASES = [
 
 ---
 
-## 4. Feedback Schema
+## 5. Feedback Schema
 
 Every attempt returns this JSON structure:
 
@@ -216,7 +257,7 @@ Every attempt returns this JSON structure:
 }
 ```
 
-### 4.1 Field Definitions
+### 5.1 Field Definitions
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -236,14 +277,14 @@ Every attempt returns this JSON structure:
 | `delta.new_failures` | array | Rules that regressed |
 | `delta.fixed_failures` | array | Rules that improved |
 
-### 4.2 Status Values
+### 5.2 Status Values
 
 - `valid` — All rules pass, ready to advance to next phase
 - `partially_valid` — Some rules pass, some fail
 - `invalid` — Critical failures (e.g., wrong return type, crashes)
 - `error` — Code failed to execute (syntax error, timeout, exception)
 
-### 4.3 Error Handling
+### 5.3 Error Handling
 
 If code fails to execute, feedback includes error info:
 
@@ -269,9 +310,9 @@ If code fails to execute, feedback includes error info:
 
 ---
 
-## 5. Runner Protocol
+## 6. Runner Protocol
 
-### 5.1 Session Flow
+### 6.1 Session Flow
 
 ```
 1. Runner loads task
@@ -286,7 +327,7 @@ If code fails to execute, feedback includes error info:
 3. Output metrics report
 ```
 
-### 5.2 Agent Interface
+### 6.2 Agent Interface
 
 Agent receives per phase:
 
@@ -319,7 +360,7 @@ Agent responds with:
 
 ---
 
-## 6. Metrics Report
+## 7. Metrics Report
 
 After task completion, runner outputs:
 
@@ -358,9 +399,9 @@ After task completion, runner outputs:
 
 ---
 
-## 7. Implementation Checklist (MVP)
+## 8. Implementation Checklist (MVP)
 
-### 7.1 Core Components
+### 8.1 Core Components
 
 - [ ] **Task Loader** — Parse `task.yaml`, load evaluator and tests
 - [ ] **Evaluator Base Class** — Abstract class with rule checking interface
@@ -368,7 +409,7 @@ After task completion, runner outputs:
 - [ ] **Sandbox** — Execute agent code safely (safety timeout, import restrictions)
 - [ ] **Metrics Collector** — Track attempts, coverage, generate report
 
-### 7.2 File Structure
+### 8.2 File Structure
 
 ```
 dcp_bench/
@@ -386,7 +427,7 @@ tasks/
 └── ...
 ```
 
-### 7.3 MVP Scope
+### 8.3 MVP Scope
 
 **Include:**
 - Single-file Python solutions
@@ -404,7 +445,7 @@ tasks/
 
 ---
 
-## 8. Example Task: Dependency Sort
+## 9. Example Task: Dependency Sort
 
 Complete example to illustrate the spec.
 
@@ -414,6 +455,7 @@ Complete example to illustrate the spec.
 id: "task_02_dependency_sort"
 name: "Dependency Sort"
 description: "Sort items respecting dependencies"
+difficulty: "easy"  # easy | medium | hard | expert
 
 interface:
   function_name: "sort_dependencies"
@@ -498,7 +540,7 @@ deps = {"b": ["a"], "c": ["b"]}
 
 ---
 
-## 9. Acceptance Criteria
+## 10. Acceptance Criteria
 
 DCP-Bench MVP is complete when:
 
@@ -511,3 +553,5 @@ DCP-Bench MVP is complete when:
 7. ✅ At least 2 example tasks are implemented
 8. ✅ Agent code is sandboxed (safety timeout, import restrictions)
 9. ✅ Metrics report includes duration per phase and total
+10. ✅ Each task has minimum 3 phases
+11. ✅ Task difficulty tier matches phase count requirements
