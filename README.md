@@ -315,6 +315,59 @@ saotri-bench run --task PATH [--workspace PATH] [--agent-id ID] [--poll-interval
 saotri-bench run --task PATH --workspace PATH --single
 ```
 
+## LLM Agent Benchmark
+
+The `agents/` module provides automated benchmarking of LLM models against Saotri Bench tasks via [OpenRouter](https://openrouter.ai/).
+
+### Setup
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Set your OpenRouter API key
+cp agents/.env.example agents/.env
+# edit agents/.env with your key
+```
+
+### Run benchmark
+
+```bash
+# Run all 3 models on all tasks
+python -m agents.run_benchmark
+
+# Run a specific model tier on a specific task
+python -m agents.run_benchmark --tier strong --task task_00_fizzbuzz
+
+# Run all models on one task
+python -m agents.run_benchmark --task task_00_fizzbuzz
+
+# List configured models
+python -m agents.run_benchmark --list-models
+```
+
+### Configured models
+
+| Tier | Model | Description |
+|------|-------|-------------|
+| `weak` | Gemma 2 9B | Small model, limited reasoning |
+| `medium` | Llama 3.3 70B | Solid open-source model |
+| `strong` | Claude Sonnet | Top-tier commercial model |
+
+### Example results
+
+```
+Task: FizzBuzz Extended [easy] (3 phases)
+Model                Tier     Phases       Attempts   Status     Tokens     Time
+Claude Sonnet        strong   3/3          3          PASS       2783       10.8s
+Llama 3.3 70B        medium   1/3          6          FAIL       7706       27.4s
+Gemma 2 9B           weak     1/3          6          FAIL       7953       13.4s
+```
+
+Reports are saved to `reports/` as JSON files (per-run details, per-task comparisons, and a full benchmark summary).
+
+See [`agents/README.md`](agents/README.md) for full documentation.
+
 ## The Name: SAOTRI
 
 **SAOTRI** is an acronym that captures the core dimensions of the benchmark evaluation model:
