@@ -10,22 +10,15 @@ Automated benchmark runner that tests LLM models on Saotri Bench tasks via [Open
 pip install -r requirements.txt
 ```
 
-2. Create `.env` file in this directory (or export the variable):
+2. Create and fill in `agents/.env` (see `.env.example`):
 
 ```bash
 cp agents/.env.example agents/.env
-# edit agents/.env and set your OpenRouter API key
-```
-
-Or export directly:
-
-```bash
-export OPENROUTER_API_KEY=sk-or-v1-your-key-here
 ```
 
 ## Usage
 
-All commands run from the **project root**.
+All commands run from the **project root** directory.
 
 ### List available models
 
@@ -53,7 +46,7 @@ Available tiers: `weak`, `medium`, `strong`
 python -m agents.run_benchmark --task task_00_fizzbuzz
 ```
 
-### Pass API key directly
+### Pass API key via CLI (alternative to .env)
 
 ```bash
 python -m agents.run_benchmark --api-key "sk-or-v1-..."
@@ -64,6 +57,15 @@ python -m agents.run_benchmark --api-key "sk-or-v1-..."
 ```bash
 python -m agents.run_benchmark --quiet
 ```
+
+## API Key Priority
+
+The script resolves the OpenRouter API key in this order:
+
+1. `--api-key` CLI argument (highest priority)
+2. `OPENROUTER_API_KEY` environment variable (auto-loaded from `agents/.env`)
+
+If neither is set, the script exits with an error message.
 
 ## Configured Models
 
@@ -111,7 +113,7 @@ Options:
   --task TASK                  Task directory name (default: all tasks)
   --tasks-dir PATH             Path to tasks directory (default: ./tasks)
   --reports-dir PATH           Path to reports output (default: ./reports)
-  --api-key KEY                OpenRouter API key (or set OPENROUTER_API_KEY)
+  --api-key KEY                OpenRouter API key (or use agents/.env)
   --list-models                List configured models and exit
   --quiet                      Reduce output verbosity
 ```
@@ -121,20 +123,23 @@ Options:
 ```
 agents/
   __init__.py          # Package init
+  .env                 # API key (gitignored, auto-loaded)
+  .env.example         # Template for .env
   config.py            # Model configurations (tiers, IDs, parameters)
   llm_client.py        # OpenRouter HTTP client
   agent.py             # LLM coding agent (prompt building, code extraction)
   bench_runner.py      # Orchestrator (agent + Saotri Bench runner loop)
   reports.py           # Report saving, loading, and summary printing
-  run_benchmark.py     # CLI entry point
+  run_benchmark.py     # CLI entry point (loads .env via python-dotenv)
 ```
 
 ### How it works
 
-1. Runner sets up workspace with `problem.md`, `task.json`, `phase.json`
-2. Agent reads workspace files, builds a prompt, calls OpenRouter LLM
-3. Agent writes generated code to `workspace/solution.py`
-4. Runner evaluates the solution, writes `feedback.json`
-5. Agent reads feedback, refines solution, writes again
-6. Loop continues until all phases pass or attempt limits are reached
-7. Results and reports are saved to `reports/`
+1. `run_benchmark.py` auto-loads `agents/.env` and reads the API key
+2. Runner sets up workspace with `problem.md`, `task.json`, `phase.json`
+3. Agent reads workspace files, builds a prompt, calls OpenRouter LLM
+4. Agent writes generated code to `workspace/solution.py`
+5. Runner evaluates the solution, writes `feedback.json`
+6. Agent reads feedback, refines solution, writes again
+7. Loop continues until all phases pass or attempt limits are reached
+8. Results and reports are saved to `reports/`

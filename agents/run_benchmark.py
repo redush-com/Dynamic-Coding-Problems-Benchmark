@@ -24,6 +24,10 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+# Auto-load .env from agents/ directory
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).resolve().parent / ".env")
+
 from agents.config import get_model, list_models, MODELS
 from agents.bench_runner import run_agent_on_task, RunResult
 from agents.reports import ReportManager
