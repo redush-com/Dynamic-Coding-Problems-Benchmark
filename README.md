@@ -1,4 +1,8 @@
-# Saotri Bench
+# SaotriBench
+
+<p align="center">
+  <img src="assets/saotri-logo.png" alt="SaotriBench" width="400">
+</p>
 
 A coding benchmark for evaluating LLM agents on multi-phase programming tasks. Tests three critical capabilities:
 
