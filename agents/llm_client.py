@@ -113,24 +113,36 @@ class OpenRouterClient:
         """Extract Python code from LLM response.
 
         Handles:
-        - ```python ... ``` blocks
-        - ``` ... ``` blocks
-        - Raw code (if no blocks found)
+        - ```python ... ``` / ```py ... ``` / ```Python ... ``` blocks
+        - ``` ... ``` blocks (generic)
+        - Raw code with function definitions
+        - Tolerates missing newline after language tag (common with Gemini)
         """
-        # Try to find ```python blocks first
-        pattern = r"```python\s*\n(.*?)```"
-        matches = re.findall(pattern, text, re.DOTALL)
+        # Try ```python or ```py blocks (case-insensitive, flexible whitespace)
+        pattern = r"```(?:python|py)\s*(.*?)```"
+        matches = re.findall(pattern, text, re.DOTALL | re.IGNORECASE)
         if matches:
-            # Return the longest match (most likely the full solution)
-            return max(matches, key=len).strip()
+            code = max(matches, key=len).strip()
+            if code:
+                return code
 
         # Try generic code blocks
-        pattern = r"```\s*\n(.*?)```"
+        pattern = r"```\s*(.*?)```"
         matches = re.findall(pattern, text, re.DOTALL)
         if matches:
-            return max(matches, key=len).strip()
+            # Filter out blocks that look like language-only tags (e.g. "json\n{...}")
+            python_matches = [
+                m.strip() for m in matches
+                if "def " in m and m.strip()
+            ]
+            if python_matches:
+                return max(python_matches, key=len)
+            # Fallback to longest non-empty block
+            non_empty = [m.strip() for m in matches if m.strip()]
+            if non_empty:
+                return max(non_empty, key=len)
 
-        # If no code blocks, try to find function definition
+        # If no code blocks, try to find function definition in raw text
         lines = text.split("\n")
         code_lines = []
         in_code = False
@@ -143,5 +155,6 @@ class OpenRouterClient:
         if code_lines:
             return "\n".join(code_lines).strip()
 
-        # Last resort: return the whole thing
+        # Last resort: return the whole thing (let evaluator report syntax error
+        # rather than "empty solution" which wastes an attempt with no feedback)
         return text.strip()

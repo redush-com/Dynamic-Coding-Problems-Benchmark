@@ -13,17 +13,23 @@ from .llm_client import OpenRouterClient
 
 
 SYSTEM_PROMPT = """\
-You are a Python coding agent solving programming tasks.
-You will be given a problem description and must write a Python function that satisfies all requirements.
+You are a Python coding agent solving programming tasks iteratively.
+You receive a problem and must write a Python function. After each attempt you get evaluation feedback with violation details.
 
-RULES:
-1. Output ONLY the Python function code inside a ```python block.
-2. Do NOT include any test code, print statements, or example usage.
-3. Do NOT use imports unless explicitly told they are allowed.
+CRITICAL OUTPUT RULES:
+1. Output EXACTLY ONE ```python block containing the COMPLETE function. Nothing else.
+2. No test code, no print statements, no example usage, no explanations outside the code block.
+3. Do NOT use imports unless explicitly listed as allowed.
 4. The function signature MUST match exactly what is specified.
-5. Pay very close attention to the feedback — it tells you exactly which rules/scopes are failing.
-6. When you see a phase transition with new rules, adapt your solution to handle them.
-7. Think step by step about what each violation scope means and fix accordingly.
+5. VERIFY your code has no syntax errors (matching brackets, quotes, colons) before outputting.
+6. Never output a partial function or empty code block.
+
+ITERATION STRATEGY:
+1. When fixing violations, do NOT break previously passing scopes. Keep working logic intact.
+2. Each scope name in violations is a hint about what the test checks. Reason about its meaning.
+3. On phase transitions: new rules are ADDED to existing ones. Your solution must satisfy ALL rules from ALL phases so far.
+4. If you get a syntax error, carefully check brackets, quotes, colons, and indentation. You may fix just the syntax or rewrite if needed — but ensure the output is valid Python.
+5. Before outputting, mentally trace through your code to check for regressions on earlier scopes.
 """
 
 
@@ -136,6 +142,13 @@ Write the complete function implementation. Output ONLY the code in a ```python 
         if error:
             parts.append(f"\n## ERROR: {error.get('type', 'Unknown')}")
             parts.append(f"Message: {error.get('message', '')}")
+            if "syntax" in error.get("type", "").lower() or "syntax" in error.get("message", "").lower():
+                parts.append(
+                    "NOTE: This is a syntax error. Double-check brackets, quotes, colons, "
+                    "and indentation. If the overall approach is sound, a minimal fix is enough. "
+                    "If you think the approach itself needs changing, you may rewrite — "
+                    "but make sure the output is syntactically valid."
+                )
 
         if violations:
             parts.append("\n## Violations:")
@@ -145,9 +158,15 @@ Write the complete function implementation. Output ONLY the code in a ```python 
         rules_text = "\n".join(f"  - {r['id']}: {r['description']}" for r in rules)
         parts.append(f"\n## Current rules to satisfy:\n{rules_text}")
 
+        # Include current solution so model always sees what it's fixing
+        current_code = self._read_file("solution.py")
+        if current_code:
+            parts.append(f"\n## Your current solution:\n```python\n{current_code}\n```")
+
         parts.append(
             "\nAnalyze the violations carefully. Think about what each scope name implies. "
-            "Fix ALL issues and output the COMPLETE updated function in a ```python block."
+            "Fix ALL issues while keeping previously passing scopes intact. "
+            "Output the COMPLETE updated function in a ```python block."
         )
 
         return "\n".join(parts)
@@ -199,12 +218,15 @@ Write the complete function implementation. Output ONLY the code in a ```python 
         """
         user_prompt = self._build_refinement_prompt(feedback)
 
-        # Keep conversation context but limit to last few turns to avoid token overflow
-        if len(self.conversation_history) > 10:
-            # Keep system + first prompt + last 4 turns
+        # Keep conversation context but limit to avoid token overflow.
+        # Models with large context (Gemini, Grok) benefit from more history;
+        # we keep system + initial exchange + recent turns.
+        max_history = 20
+        if len(self.conversation_history) > max_history:
+            # Keep system + first prompt/response + last 6 turns
             self.conversation_history = (
                 self.conversation_history[:3]
-                + self.conversation_history[-4:]
+                + self.conversation_history[-6:]
             )
 
         self.conversation_history.append({"role": "user", "content": user_prompt})
