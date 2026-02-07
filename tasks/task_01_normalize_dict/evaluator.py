@@ -29,14 +29,15 @@ class Evaluator(BaseEvaluator):
         self, solution_fn: Callable[..., Any], test_case: TestCase
     ) -> RuleResult:
         """Check if input was mutated."""
-        original = copy.deepcopy(test_case.input)
-        solution_fn(test_case.input)
+        # Use a copy so that test_case.input is never corrupted
+        input_copy = copy.deepcopy(test_case.input)
+        solution_fn(input_copy)
 
-        if self._deep_equals(test_case.input, original):
+        if self._deep_equals(input_copy, test_case.input):
             return RuleResult.success()
 
         # Determine if mutation is direct or nested
-        scope = self._classify_mutation(test_case.input, original)
+        scope = self._classify_mutation(input_copy, test_case.input)
         return RuleResult.failed(scope=scope)
 
     def check_deterministic(

@@ -31,10 +31,11 @@ class Evaluator(BaseEvaluator):
         self, solution_fn: Callable[..., Any], test_case: TestCase
     ) -> RuleResult:
         """Check if input was mutated."""
-        original = copy.deepcopy(test_case.input)
-        solution_fn(test_case.input)
+        # Use a copy so that test_case.input is never corrupted
+        input_copy = copy.deepcopy(test_case.input)
+        solution_fn(input_copy)
 
-        if test_case.input == original:
+        if input_copy == test_case.input:
             return RuleResult.success()
 
         return RuleResult.failed(scope="direct")

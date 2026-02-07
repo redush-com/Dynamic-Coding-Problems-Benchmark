@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import multiprocessing
 import sys
+import threading
 from typing import Any, Callable
 
 
@@ -64,10 +65,43 @@ def _check_imports(code: str, allowed_imports: list[str]) -> None:
                         f"Import from '{module_name}' is not allowed. "
                         f"Allowed imports: {allowed_imports}"
                     )
+        # Block __import__() calls that bypass import statements
+        elif isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name) and func.id == "__import__":
+                raise ImportViolationError(
+                    f"Use of __import__() is not allowed. "
+                    f"Allowed imports: {allowed_imports}"
+                )
 
 
-def _create_restricted_builtins() -> dict[str, Any]:
-    """Create a restricted set of builtins for sandboxed execution."""
+def _create_restricted_builtins(
+    allowed_imports: list[str] | None = None,
+) -> dict[str, Any]:
+    """Create a restricted set of builtins for sandboxed execution.
+
+    Args:
+        allowed_imports: List of module names that import statements are allowed to load.
+    """
+    if allowed_imports is None:
+        allowed_imports = []
+
+    def _restricted_import(
+        name: str,
+        globals: dict[str, Any] | None = None,
+        locals: dict[str, Any] | None = None,
+        fromlist: tuple[str, ...] = (),
+        level: int = 0,
+    ) -> Any:
+        """Import that only allows whitelisted modules."""
+        root_module = name.split(".")[0]
+        if root_module not in allowed_imports:
+            raise ImportError(
+                f"Import '{root_module}' is not allowed. "
+                f"Allowed imports: {allowed_imports}"
+            )
+        return __import__(name, globals, locals, fromlist, level)
+
     # Safe builtins that don't allow file/network/system access
     safe_builtins = {
         # Types
@@ -139,8 +173,8 @@ def _create_restricted_builtins() -> dict[str, Any]:
         "True": True,
         "False": False,
         "None": None,
-        # Allow __import__ for allowed modules (will be filtered by AST check)
-        "__import__": __import__,
+        # Restricted __import__ only allows whitelisted modules
+        "__import__": _restricted_import,
         "__name__": "__main__",
         "__doc__": None,
     }
@@ -157,7 +191,7 @@ def _execute_in_process(
     try:
         # Create execution namespace with restricted builtins
         namespace: dict[str, Any] = {
-            "__builtins__": _create_restricted_builtins(),
+            "__builtins__": _create_restricted_builtins(allowed_imports),
         }
 
         # Pre-import allowed modules
@@ -219,7 +253,7 @@ def execute_code(
 
     # Create execution namespace
     namespace: dict[str, Any] = {
-        "__builtins__": _create_restricted_builtins(),
+        "__builtins__": _create_restricted_builtins(allowed_imports),
     }
 
     # Pre-import allowed modules
@@ -229,16 +263,29 @@ def execute_code(
         except ImportError:
             pass
 
-    # For Windows compatibility, we use a simpler approach:
-    # Execute in the current process with a timeout via multiprocessing
-    # for the actual function calls (handled by the runner)
+    # Execute code with timeout protection using a thread
+    exec_error: list[Exception] = []
 
-    try:
-        exec(code, namespace)
-    except SyntaxError as e:
-        raise ExecutionError(f"Syntax error: {e}")
-    except Exception as e:
-        raise ExecutionError(f"{type(e).__name__}: {e}")
+    def _exec_worker() -> None:
+        try:
+            exec(code, namespace)
+        except SyntaxError as e:
+            exec_error.append(ExecutionError(f"Syntax error: {e}"))
+        except Exception as e:
+            exec_error.append(ExecutionError(f"{type(e).__name__}: {e}"))
+
+    thread = threading.Thread(target=_exec_worker, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout)
+
+    if thread.is_alive():
+        # Thread is stuck (infinite loop at definition time)
+        raise TimeoutError(
+            f"Code definition timed out after {timeout} seconds"
+        )
+
+    if exec_error:
+        raise exec_error[0]
 
     # Get the function
     if function_name not in namespace:

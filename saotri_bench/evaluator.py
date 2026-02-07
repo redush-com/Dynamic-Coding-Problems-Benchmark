@@ -110,21 +110,21 @@ def check_no_mutation(
     Returns:
         Tuple of (passed, scope if failed)
     """
-    original = copy.deepcopy(test_input)
-    solution_fn(test_input)
+    input_copy = copy.deepcopy(test_input)
+    solution_fn(input_copy)
 
-    if test_input == original:
+    if input_copy == test_input:
         return True, None
 
     # Determine scope based on mutation type
-    if isinstance(test_input, dict):
+    if isinstance(input_copy, dict):
         # Check if it's a nested mutation
-        for key, value in original.items():
-            if key in test_input and test_input[key] != value:
+        for key, value in test_input.items():
+            if key in input_copy and input_copy[key] != value:
                 if isinstance(value, (dict, list)):
                     return False, "nested"
         return False, "direct"
-    elif isinstance(test_input, list):
+    elif isinstance(input_copy, list):
         return False, "direct"
 
     return False, "direct"
